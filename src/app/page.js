@@ -43,8 +43,8 @@ const POSES = {
     { lsh: -22, rsh: 22, le: -16, re: 16, lh: 66, rh: -66, lk: -56, rk: 56, torso: 18, head: 14 },
   ],
   fall: [
-    { lsh: 82, rsh: 82, le: 22, re: 22, lh: 22, rh: -22, lk: -12, rk: 12, torso: 62, head: 32 },
-    { lsh: 92, rsh: 92, le: 32, re: 32, lh: 26, rh: -26, lk: -16, rk: 16, torso: 66, head: 36 },
+    { lsh: 130, rsh: -150, le: 80, re: 60, lh: 110, rh: -90, lk: -60, rk: 60, torso: 90, head: -20 },
+    { lsh: 140, rsh: -140, le: 90, re: 70, lh: 120, rh: -100, lk: -70, rk: 70, torso: 95, head: -15 },
   ],
   fight: [
     { lsh: -62, rsh: 32, le: -82, re: 22, lh: 22, rh: -16, lk: -12, rk: 12, torso: -12, head: -8 },
@@ -82,8 +82,6 @@ function drawChar(ctx, cx, cy, scale, pose, flip) {
   ctx.scale(scale, scale);
 
   const deg = (d) => (d * Math.PI) / 180;
-  const col = "rgba(8,8,18,0.96)";
-  ctx.fillStyle = col;
 
   const HL = 28, LA = 18, UA = 20, UL = 22, LL = 22, TW = 8, LW = 5, AW = 4;
 
@@ -97,61 +95,75 @@ function drawChar(ctx, cx, cy, scale, pose, flip) {
     ctx.restore();
   }
 
-  const lean = pose.torso || 0;
+  function drawCharacterShapes() {
+    const lean = pose.torso || 0;
+    ctx.save();
+    ctx.translate(0, -HL / 2);
+    ctx.rotate(deg(lean));
+
+    const sY = -HL / 2;
+    const hY = HL / 2;
+
+    // torso
+    ctx.beginPath();
+    ctx.roundRect(-TW / 2, sY, TW, HL, 3);
+    ctx.fill();
+
+    // left arm
+    limb(-TW / 2, sY, pose.lsh, UA, AW);
+    ctx.save();
+    ctx.translate(-TW / 2, sY);
+    ctx.rotate(deg(pose.lsh));
+    limb(0, UA, pose.le, LA, AW);
+    ctx.restore();
+
+    // right arm
+    limb(TW / 2, sY, pose.rsh, UA, AW);
+    ctx.save();
+    ctx.translate(TW / 2, sY);
+    ctx.rotate(deg(pose.rsh));
+    limb(0, UA, pose.re, LA, AW);
+    ctx.restore();
+
+    // left leg
+    limb(-LW, hY, pose.lh, UL, LW);
+    ctx.save();
+    ctx.translate(-LW, hY);
+    ctx.rotate(deg(pose.lh));
+    limb(0, UL, pose.lk, LL, LW);
+    ctx.restore();
+
+    // right leg
+    limb(LW, hY, pose.rh, UL, LW);
+    ctx.save();
+    ctx.translate(LW, hY);
+    ctx.rotate(deg(pose.rh));
+    limb(0, UL, pose.rk, LL, LW);
+    ctx.restore();
+
+    ctx.restore();
+
+    // head
+    ctx.save();
+    ctx.translate(0, -HL - 13);
+    ctx.rotate(deg((pose.head || 0) + lean * 0.5));
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Draw rim light first
   ctx.save();
-  ctx.translate(0, -HL / 2);
-  ctx.rotate(deg(lean));
-
-  const sY = -HL / 2;
-  const hY = HL / 2;
-
-  // torso
-  ctx.beginPath();
-  ctx.roundRect(-TW / 2, sY, TW, HL, 3);
-  ctx.fill();
-
-  // left arm
-  limb(-TW / 2, sY, pose.lsh, UA, AW);
-  ctx.save();
-  ctx.translate(-TW / 2, sY);
-  ctx.rotate(deg(pose.lsh));
-  limb(0, UA, pose.le, LA, AW);
+  ctx.translate(-2, -2);
+  ctx.fillStyle = "rgba(200, 210, 240, 0.45)";
+  drawCharacterShapes();
   ctx.restore();
 
-  // right arm
-  limb(TW / 2, sY, pose.rsh, UA, AW);
-  ctx.save();
-  ctx.translate(TW / 2, sY);
-  ctx.rotate(deg(pose.rsh));
-  limb(0, UA, pose.re, LA, AW);
-  ctx.restore();
+  // Draw base character
+  ctx.fillStyle = "rgba(8,8,18,0.96)";
+  drawCharacterShapes();
 
-  // left leg
-  limb(-LW, hY, pose.lh, UL, LW);
-  ctx.save();
-  ctx.translate(-LW, hY);
-  ctx.rotate(deg(pose.lh));
-  limb(0, UL, pose.lk, LL, LW);
-  ctx.restore();
-
-  // right leg
-  limb(LW, hY, pose.rh, UL, LW);
-  ctx.save();
-  ctx.translate(LW, hY);
-  ctx.rotate(deg(pose.rh));
-  limb(0, UL, pose.rk, LL, LW);
-  ctx.restore();
-
-  ctx.restore();
-
-  // head
-  ctx.save();
-  ctx.translate(0, -HL - 13);
-  ctx.rotate(deg((pose.head || 0) + lean * 0.5));
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 9, 11, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
   ctx.restore();
 }
 
@@ -159,7 +171,10 @@ function drawChar(ctx, cx, cy, scale, pose, flip) {
 function drawBg(ctx, type, frame, W, H) {
   const bgs = {
     "rainy-field": () => {
-      ctx.fillStyle = "#1a1f2e";
+      const grd = ctx.createLinearGradient(0, 0, 0, H * 0.72);
+      grd.addColorStop(0, "#2a354a");
+      grd.addColorStop(1, "#1a1f2e");
+      ctx.fillStyle = grd;
       ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = "#0d1a0d";
       ctx.fillRect(0, H * 0.72, W, H * 0.28);
@@ -205,7 +220,10 @@ function drawBg(ctx, type, frame, W, H) {
       ctx.globalAlpha = 1;
     },
     "city-street": () => {
-      ctx.fillStyle = "#111118";
+      const grd = ctx.createLinearGradient(0, 0, 0, H * 0.72);
+      grd.addColorStop(0, "#251b3a");
+      grd.addColorStop(1, "#111118");
+      ctx.fillStyle = grd;
       ctx.fillRect(0, 0, W, H);
       const blds = [[50, 180, 80, 160],[140, 200, 60, 140],[210, 160, 90, 180],[320, 190, 70, 150],[430, 170, 100, 170],[550, 185, 80, 155],[630, 200, 50, 140]];
       blds.forEach(([x, , w, h]) => {
@@ -298,8 +316,91 @@ function drawBg(ctx, type, frame, W, H) {
       ctx.stroke();
     },
     default: () => {
-      ctx.fillStyle = "#0a0a14";
+      const grd = ctx.createLinearGradient(0, 0, 0, H * 0.72);
+      grd.addColorStop(0, "#3a2a2a");
+      grd.addColorStop(1, "#0a0a14");
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, W, H * 0.72);
+      ctx.fillStyle = "#0f0f1e";
+      ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    },
+    "eiffel-tower": () => {
+      const grd = ctx.createLinearGradient(0, 0, 0, H * 0.72);
+      grd.addColorStop(0, "#4a3535");
+      grd.addColorStop(1, "#1a1a2e");
+      ctx.fillStyle = grd;
       ctx.fillRect(0, 0, W, H);
+      
+      // Eiffel Tower shape
+      ctx.fillStyle = "#151520";
+      ctx.beginPath();
+      ctx.moveTo(W * 0.45, H * 0.72);
+      ctx.quadraticCurveTo(W * 0.48, H * 0.4, W * 0.49, H * 0.1);
+      ctx.lineTo(W * 0.51, H * 0.1);
+      ctx.quadraticCurveTo(W * 0.52, H * 0.4, W * 0.55, H * 0.72);
+      // arches
+      ctx.lineTo(W * 0.52, H * 0.72);
+      ctx.quadraticCurveTo(W * 0.5, H * 0.65, W * 0.48, H * 0.72);
+      ctx.fill();
+
+      // Decks
+      ctx.fillRect(W * 0.47, H * 0.5, W * 0.06, H * 0.02);
+      ctx.fillRect(W * 0.48, H * 0.3, W * 0.04, H * 0.015);
+
+      ctx.fillStyle = "#0f0f1e";
+      ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    },
+    "pyramid": () => {
+      const grd = ctx.createLinearGradient(0, 0, 0, H * 0.72);
+      grd.addColorStop(0, "#5a3a2a");
+      grd.addColorStop(1, "#2a1a0f");
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Pyramid shape
+      ctx.fillStyle = "#180f08";
+      ctx.beginPath();
+      ctx.moveTo(W * 0.1, H * 0.72);
+      ctx.lineTo(W * 0.4, H * 0.3);
+      ctx.lineTo(W * 0.6, H * 0.72);
+      ctx.fill();
+      
+      // Shadow side
+      ctx.fillStyle = "#100a05";
+      ctx.beginPath();
+      ctx.moveTo(W * 0.4, H * 0.3);
+      ctx.lineTo(W * 0.6, H * 0.72);
+      ctx.lineTo(W * 0.85, H * 0.72);
+      ctx.fill();
+
+      ctx.fillStyle = "#1e1206";
+      ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    },
+    "big-ben": () => {
+      const grd = ctx.createLinearGradient(0, 0, 0, H * 0.72);
+      grd.addColorStop(0, "#2a354a");
+      grd.addColorStop(1, "#1a1f2e");
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, W, H);
+      
+      // Big Ben Tower
+      ctx.fillStyle = "#151520";
+      ctx.fillRect(W * 0.7, H * 0.2, W * 0.08, H * 0.52);
+      
+      // Clock face
+      ctx.fillStyle = "rgba(255, 240, 200, 0.2)";
+      ctx.beginPath();
+      ctx.arc(W * 0.74, H * 0.28, W * 0.025, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Top spire
+      ctx.fillStyle = "#151520";
+      ctx.beginPath();
+      ctx.moveTo(W * 0.69, H * 0.2);
+      ctx.lineTo(W * 0.74, H * 0.05);
+      ctx.lineTo(W * 0.79, H * 0.2);
+      ctx.fill();
+
       ctx.fillStyle = "#0f0f1e";
       ctx.fillRect(0, H * 0.72, W, H * 0.28);
     },
@@ -427,7 +528,10 @@ export default function Home() {
       const x = ((ch.startX ?? 0.3) + ((ch.endX ?? ch.startX ?? 0.3) - (ch.startX ?? 0.3)) * prog) * W;
       const baseScale = ch.size === "small" ? 0.65 : ch.size === "large" ? 1.1 : 0.88;
       const charH = (28 + 11 + 22 + 22) * baseScale;
-      const cy = H * 0.72 - charH * 0.05;
+      let cy = H * 0.72 - charH * 0.05;
+      if (ch.action === "fall") {
+        cy += prog * H * 0.6;
+      }
       const phase = (f * 0.042) % 1;
       const pose = getPose(ch.action || "idle", phase);
       const flip = ch.flip || (ch.endX !== undefined && ch.endX < (ch.startX ?? 0.3) && !ch.flip);

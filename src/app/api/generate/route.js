@@ -10,7 +10,7 @@ Return ONLY valid JSON — no extra text, no markdown fences, no explanation.
 Schema:
 {
   "duration": <number 3-8, total seconds>,
-  "background": <"rainy-field" | "cliff" | "city-street" | "sunset" | "forest" | "desert" | "dojo" | "default">,
+  "background": <"rainy-field" | "cliff" | "city-street" | "sunset" | "forest" | "desert" | "dojo" | "eiffel-tower" | "pyramid" | "big-ben" | "default">,
   "shots": [
     {
       "startTime": <number>,
