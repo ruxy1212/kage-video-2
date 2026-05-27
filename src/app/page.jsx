@@ -1,6 +1,5 @@
 "use client";
 import { useRef, useEffect, useState, useCallback } from "react";
-import styles from "./page.module.css";
 import { FPS, W, H } from "../lib/constants";
 import { getPose } from "../lib/poses";
 import { drawBg, drawChar, drawBall, drawParticles, drawCaption } from "../lib/renderer";
@@ -179,7 +178,7 @@ export default function Home() {
   };
 
   return (
-    <main className={styles.main}>
+    <main className="min-h-screen px-6 py-8 pb-12 max-w-215 mx-auto font-sans text-[#e8e8f0]">
       <Header />
       
       <ExampleList 
@@ -196,14 +195,14 @@ export default function Home() {
         loading={loading} 
       />
 
-      {error && <p className={styles.error}>{error}</p>}
+      {error && <p className="text-xs text-[#cc4444] mb-2 px-2.5 py-1.5 border border-[#3a1a1a] rounded-md bg-[#1a0a0a]">{error}</p>}
 
-      <div className={styles.stageWrap}>
-        <canvas ref={canvasRef} width={W} height={H} className={styles.canvas} />
+      <div className="relative border border-[#1e1e30] rounded-[10px] overflow-hidden bg-[#0a0a14]">
+        <canvas ref={canvasRef} width={W} height={H} className="block w-full h-auto" />
         {loading && (
-          <div className={styles.loadOverlay}>
-            <span className={styles.loadDot} />
-            <span className={styles.loadText}>directing the scene</span>
+          <div className="absolute inset-0 bg-[#0a0a14]/75 flex items-center justify-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-[#6666aa] animate-pulse-fast" />
+            <span className="text-[13px] text-[#888899] tracking-[0.08em]">directing the scene</span>
           </div>
         )}
       </div>
