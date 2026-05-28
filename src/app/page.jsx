@@ -1,8 +1,6 @@
 "use client";
 import { useRef, useEffect, useState, useCallback } from "react";
 import { FPS, W, H } from "../lib/constants";
-import { getPose } from "../lib/poses";
-import { drawBg, drawChar, drawBall, drawParticles, drawCaption } from "../lib/renderer";
 import Header from "../components/Header";
 import ExampleList from "../components/ExampleList";
 import PromptInput from "../components/PromptInput";
@@ -12,9 +10,9 @@ import Controls from "../components/Controls";
 export default function Home() {
   const canvasRef = useRef(null);
   const stateRef = useRef({
-    scene: null,
+    code: null,
     frame: 0,
-    totalFrames: 0,
+    totalFrames: 10 * FPS, // Default 10 seconds
     playing: false,
     rafId: null,
   });
@@ -25,49 +23,6 @@ export default function Home() {
   const [error, setError] = useState("");
   const [prompt, setPrompt] = useState("");
 
-  const renderFrame = useCallback((f) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const { scene } = stateRef.current;
-    if (!scene) return;
-
-    const t = f / FPS;
-    const shot =
-      scene.shots.find((s) => t >= s.startTime && t < s.endTime) ||
-      scene.shots[scene.shots.length - 1];
-
-    const shotDur = shot.endTime - shot.startTime;
-    const shotFrame = Math.round((t - shot.startTime) * FPS);
-    const shotDurFrames = Math.round(shotDur * FPS);
-
-    drawBg(ctx, shot.background || scene.background || "default", f, W, H);
-    if (shot.particles) drawParticles(ctx, shot.particles, f, W, H);
-    if (shot.ball !== undefined)
-      drawBall(ctx, shot.ball, shotFrame, shotDurFrames, W, H);
-
-    (shot.characters || []).forEach((ch) => {
-      const prog = Math.min((t - shot.startTime) / shotDur, 1);
-      const x = ((ch.startX ?? 0.3) + ((ch.endX ?? ch.startX ?? 0.3) - (ch.startX ?? 0.3)) * prog) * W;
-      const baseScale = ch.size === "small" ? 0.65 : ch.size === "large" ? 1.1 : 0.88;
-      const charH = (28 + 11 + 22 + 22) * baseScale;
-      let cy = H * 0.72 - charH * 0.05;
-      if (ch.action === "fall") {
-        cy += prog * H * 0.6;
-      }
-      const phase = (f * 0.042) % 1;
-      const pose = getPose(ch.action || "idle", phase);
-      const flip = ch.flip || (ch.endX !== undefined && ch.endX < (ch.startX ?? 0.3) && !ch.flip);
-      drawChar(ctx, x, cy, baseScale, pose, flip);
-    });
-
-    drawCaption(ctx, shot.caption, shotFrame, W, H);
-
-    const si = scene.shots.indexOf(shot) + 1;
-    setShotInfo(`shot ${si} / ${scene.shots.length}`);
-    setProgress((f / stateRef.current.totalFrames) * 100);
-  }, []);
-
   const stopPlay = useCallback(() => {
     const s = stateRef.current;
     s.playing = false;
@@ -75,9 +30,32 @@ export default function Home() {
     setPlaying(false);
   }, []);
 
+  const renderFrame = useCallback((f) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const { code } = stateRef.current;
+    if (!code) return;
+
+    const t = f / FPS;
+    
+    try {
+      // Create isolated function body from code
+      const drawFn = new Function('ctx', 'W', 'H', 't', code);
+      drawFn(ctx, W, H, t);
+      setShotInfo(`${t.toFixed(1)}s / ${(stateRef.current.totalFrames / FPS).toFixed(1)}s`);
+    } catch (err) {
+      console.error("Render Error:", err);
+      setError("Render error: " + err.message);
+      stopPlay();
+    }
+
+    setProgress((f / stateRef.current.totalFrames) * 100);
+  }, [stopPlay]);
+
   const startPlay = useCallback(() => {
     const s = stateRef.current;
-    if (!s.scene) return;
+    if (!s.code) return;
     s.playing = true;
     setPlaying(true);
     const tick = () => {
@@ -91,11 +69,11 @@ export default function Home() {
   }, [renderFrame]);
 
   const loadScene = useCallback(
-    (sceneData) => {
+    (codeData) => {
       stopPlay();
       const s = stateRef.current;
-      s.scene = sceneData;
-      s.totalFrames = Math.round(sceneData.duration * FPS);
+      s.code = codeData;
+      s.totalFrames = 10 * FPS; // Just default to 10 seconds for now
       s.frame = 0;
       renderFrame(0);
       setTimeout(startPlay, 100);
@@ -105,21 +83,14 @@ export default function Home() {
 
   // demo idle scene on mount
   useEffect(() => {
-    loadScene({
-      duration: 4,
-      background: "default",
-      shots: [
-        {
-          startTime: 0,
-          endTime: 4,
-          caption: "enter a prompt above",
-          characters: [
-            { id: "a", size: "medium", startX: 0.38, endX: 0.4, action: "idle" },
-            { id: "b", size: "medium", startX: 0.58, endX: 0.56, action: "idle", flip: true },
-          ],
-        },
-      ],
-    });
+    loadScene(`
+      ctx.fillStyle = '#0a0a14';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('enter a prompt above', W/2, H/2 + Math.sin(t*3)*10);
+    `);
     return () => stopPlay();
   }, [loadScene, stopPlay]);
 
@@ -136,7 +107,7 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
-      loadScene(data.scene);
+      loadScene(data.code);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -146,7 +117,7 @@ export default function Home() {
 
   const handleExport = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !stateRef.current.scene) return;
+    if (!canvas || !stateRef.current.code) return;
     stopPlay();
     const stream = canvas.captureStream(FPS);
     const recorder = new MediaRecorder(stream, {

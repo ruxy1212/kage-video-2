@@ -3,52 +3,17 @@ import { GoogleGenAI } from "@google/genai";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SYSTEM_PROMPT = `You are an animation director for a silhouette anime generator.
-Convert the user's scene prompt into a structured JSON animation script.
-Return ONLY valid JSON — no extra text, no markdown fences, no explanation.
+const SYSTEM_PROMPT = `You are an expert generative creative coder.
+Your task is to write a JavaScript snippet that will be passed to \`new Function('ctx', 'W', 'H', 't', code)\`.
+The code must render an animation loop on an HTML5 Canvas based on the user's prompt.
+'ctx' is the CanvasRenderingContext2D.
+'W' and 'H' are the width and height of the canvas (800x450).
+'t' is the time in seconds (a float starting at 0).
+Do not wrap the code in a function declaration, return ONLY the raw execution code.
+Return ONLY valid Javascript code — no extra text, no markdown fences, no explanation.
 
-Schema:
-{
-  "duration": <number 3-8, total seconds>,
-  "background": <"rainy-field" | "cliff" | "city-street" | "sunset" | "forest" | "desert" | "dojo" | "eiffel-tower" | "pyramid" | "big-ben" | "default">,
-  "shots": [
-    {
-      "startTime": <number>,
-      "endTime": <number>,
-      "caption": <string, 3-5 words max>,
-      "background": <optional override>,
-      "particles": <optional "celebrate" | "sparks">,
-      "characters": [
-        {
-          "id": <string>,
-          "size": <"small" | "medium" | "large">,
-          "startX": <0.0-1.0>,
-          "endX": <0.0-1.0>,
-          "action": <"idle"|"walk"|"run"|"kick"|"jump"|"celebrate"|"tired"|"crouch"|"fall"|"fight"|"sit"|"point">,
-          "flip": <boolean, true = face left>
-        }
-      ],
-      "ball": <optional {
-        "startX": <0.0-1.0>,
-        "endX": <0.0-1.0>,
-        "groundY": <0.0-1.0, default 0.76>,
-        "arc": <boolean>,
-        "bouncing": <boolean>
-      }>
-    }
-  ]
-}
-
-Rules:
-- 3-5 shots that form a complete story arc with clear beginning, middle, end
-- Shots must be strictly sequential: shot[n].endTime === shot[n+1].startTime
-- Characters move from startX to endX during the shot (0=left, 1=right)
-- Keep characters between 0.08 and 0.92 to stay on screen
-- size: small=child/young, medium=adult, large=tall or imposing figure
-- flip:true means character faces left (use when moving left or facing another char on the right)
-- Use ball object whenever prompt involves a ball, projectile, or thrown object
-- Match background to the setting and mood of the prompt
-- Caption is a punchy 3-5 word scene description`;
+Use standard 2D paths (bezierCurves, lineTo), gradients, and clever scalable emoji placement (e.g. \`ctx.font = '100px sans-serif'; ctx.fillText('👩‍🚀', x, y);\`) to handle complex subjects robustly and playfully. 
+Create moving parallax effects using 't'. Clear the canvas first with 'ctx.clearRect(0, 0, W, H)' or a solid fill. Make it visually stunning but robust.`;
 
 export async function POST(request) {
   const ai = new GoogleGenAI({
@@ -91,12 +56,11 @@ export async function POST(request) {
     });
 
     const raw = response.text;
-    console.log(raw);
+    console.log("Raw LLM output:", raw);
 
-    const clean = raw.replace(/```json|```/g, "").trim();
-    const scene = JSON.parse(clean);
+    const clean = raw.replace(/```javascript|```js|```/gi, "").trim();
 
-    return Response.json({ scene });
+    return Response.json({ code: clean });
   } catch (err) {
     console.error("Generate error:", err);
     return Response.json(
