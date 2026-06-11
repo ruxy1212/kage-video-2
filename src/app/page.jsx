@@ -5,100 +5,115 @@ import Header from "../components/Header";
 import ExampleList from "../components/ExampleList";
 import PromptInput from "../components/PromptInput";
 import Controls from "../components/Controls";
+import { renderScene } from "../lib";
 
 // ─── COMPONENT ────────────────────────────────────────────────────────────────
 export default function Home() {
   const canvasRef = useRef(null);
   const stateRef = useRef({
-    code: null,
-    frame: 0,
-    totalFrames: 10 * FPS, // Default 10 seconds
-    playing: false,
+    scene: null,          // validated scene JSON from API
+    startTime: null,      // performance.now() when scene started playing
     rafId: null,
+    playing: false,
   });
-  const [playing, setPlaying] = useState(false);
+
+  const [playing, setPlaying]   = useState(false);
   const [progress, setProgress] = useState(0);
   const [shotInfo, setShotInfo] = useState("— / —");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [prompt, setPrompt]     = useState("");
 
+  // ── Stop playback ──────────────────────────────────────────────────────────
   const stopPlay = useCallback(() => {
     const s = stateRef.current;
     s.playing = false;
     if (s.rafId) cancelAnimationFrame(s.rafId);
+    s.rafId = null;
     setPlaying(false);
   }, []);
 
-  const renderFrame = useCallback((f) => {
+  // ── Render one frame at time t (seconds) ───────────────────────────────────
+  const renderFrame = useCallback((t) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    const { code } = stateRef.current;
-    if (!code) return;
+    const { scene } = stateRef.current;
+    if (!scene) return;
 
-    const t = f / FPS;
-    
-    try {
-      // Create isolated function body from code
-      const drawFn = new Function('ctx', 'W', 'H', 't', code);
-      drawFn(ctx, W, H, t);
-      setShotInfo(`${t.toFixed(1)}s / ${(stateRef.current.totalFrames / FPS).toFixed(1)}s`);
-    } catch (err) {
-      console.error("Render Error:", err);
-      setError("Render error: " + err.message);
-      stopPlay();
-    }
+    renderScene(scene, ctx, W, H, t);
 
-    setProgress((f / stateRef.current.totalFrames) * 100);
-  }, [stopPlay]);
+    const dur = scene.duration;
+    const clamped = Math.min(t, dur);
+    setShotInfo(`${clamped.toFixed(1)}s / ${dur.toFixed(1)}s`);
+    setProgress((clamped / dur) * 100);
+  }, []);
 
+  // ── Playback loop — runs forward, stops exactly at duration ───────────────
   const startPlay = useCallback(() => {
     const s = stateRef.current;
-    if (!s.code) return;
+    if (!s.scene) return;
+
     s.playing = true;
     setPlaying(true);
+
+    // Record the real-world start time so elapsed t is wall-clock accurate
+    s.startTime = performance.now();
+
     const tick = () => {
       if (!s.playing) return;
-      s.frame++;
-      if (s.frame >= s.totalFrames) s.frame = 0;
-      renderFrame(s.frame);
+
+      const elapsed = (performance.now() - s.startTime) / 1000; // seconds
+
+      if (elapsed >= s.scene.duration) {
+        // Render the final frame exactly at duration, then stop
+        renderFrame(s.scene.duration);
+        setProgress(100);
+        stopPlay();
+        return;
+      }
+
+      renderFrame(elapsed);
       s.rafId = requestAnimationFrame(tick);
     };
-    s.rafId = requestAnimationFrame(tick);
-  }, [renderFrame]);
 
+    s.rafId = requestAnimationFrame(tick);
+  }, [renderFrame, stopPlay]);
+
+  // ── Load a new scene: render frame 0, then auto-play ──────────────────────
   const loadScene = useCallback(
-    (codeData) => {
+    (scene) => {
       stopPlay();
-      const s = stateRef.current;
-      s.code = codeData;
-      s.totalFrames = 10 * FPS; // Just default to 10 seconds for now
-      s.frame = 0;
+      stateRef.current.scene = scene;
       renderFrame(0);
-      setTimeout(startPlay, 100);
+      // Small delay so the first frame paints before playback starts
+      setTimeout(startPlay, 80);
     },
     [stopPlay, startPlay, renderFrame]
   );
 
-  // demo idle scene on mount
+  // ── Demo idle scene on mount ───────────────────────────────────────────────
   useEffect(() => {
-    loadScene(`
-      ctx.fillStyle = '#0a0a14';
-      ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '24px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('enter a prompt above', W/2, H/2 + Math.sin(t*3)*10);
-    `);
+    // Paint a static placeholder — no rAF needed
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#0a0a14";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "22px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("enter a prompt above", W / 2, H / 2);
     return () => stopPlay();
-  }, [loadScene, stopPlay]);
+  }, [stopPlay]);
 
+  // ── Generate from API ──────────────────────────────────────────────────────
   const handleGenerate = async (text) => {
     if (!text.trim() || loading) return;
     setError("");
     setLoading(true);
     stopPlay();
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -107,7 +122,8 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
-      loadScene(data.code);
+      // API now returns { scene } instead of { code }
+      loadScene(data.scene);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -115,14 +131,18 @@ export default function Home() {
     }
   };
 
+  // ── Export: record the scene playing forward from t=0 to t=duration ───────
   const handleExport = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !stateRef.current.code) return;
+    const { scene } = stateRef.current;
+    if (!canvas || !scene) return;
+
     stopPlay();
+
     const stream = canvas.captureStream(FPS);
     const recorder = new MediaRecorder(stream, {
       mimeType: "video/webm;codecs=vp9",
-      videoBitsPerSecond: 3000000,
+      videoBitsPerSecond: 3_000_000,
     });
     const chunks = [];
     recorder.ondataavailable = (e) => chunks.push(e.data);
@@ -134,39 +154,69 @@ export default function Home() {
       a.download = "animation.webm";
       a.click();
       URL.revokeObjectURL(url);
+      // Resume live playback after export
+      stateRef.current.startTime = performance.now();
       startPlay();
     };
+
     recorder.start();
-    let ef = 0;
-    const { totalFrames } = stateRef.current;
+
+    const totalFrames = Math.ceil(scene.duration * FPS);
+    let frame = 0;
+
     const recordTick = () => {
-      renderFrame(ef);
-      ef++;
-      if (ef < totalFrames) requestAnimationFrame(recordTick);
-      else setTimeout(() => recorder.stop(), 120);
+      const t = frame / FPS;
+      renderFrame(t);
+      frame++;
+      if (frame <= totalFrames) {
+        requestAnimationFrame(recordTick);
+      } else {
+        setTimeout(() => recorder.stop(), 120);
+      }
     };
     recordTick();
   };
 
+  // ── Toggle play/pause ──────────────────────────────────────────────────────
+  const handleTogglePlay = () => {
+    const s = stateRef.current;
+    if (playing) {
+      stopPlay();
+    } else {
+      // Resume from wherever the last frame left off
+      // Re-anchor startTime so elapsed continues correctly
+      const currentT = s.scene
+        ? (parseFloat(shotInfo) || 0)
+        : 0;
+      s.startTime = performance.now() - currentT * 1000;
+      startPlay();
+    }
+  };
+
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
     <main className="min-h-screen px-6 py-8 pb-12 max-w-215 mx-auto font-sans text-[#e8e8f0]">
       <Header />
-      
-      <ExampleList 
-        onSelect={(ex) => { 
-          setPrompt(ex); 
-          handleGenerate(ex); 
-        }} 
+
+      <ExampleList
+        onSelect={(ex) => {
+          setPrompt(ex);
+          handleGenerate(ex);
+        }}
       />
 
-      <PromptInput 
-        prompt={prompt} 
-        setPrompt={setPrompt} 
-        handleGenerate={handleGenerate} 
-        loading={loading} 
+      <PromptInput
+        prompt={prompt}
+        setPrompt={setPrompt}
+        handleGenerate={handleGenerate}
+        loading={loading}
       />
 
-      {error && <p className="text-xs text-[#cc4444] mb-2 px-2.5 py-1.5 border border-[#3a1a1a] rounded-md bg-[#1a0a0a]">{error}</p>}
+      {error && (
+        <p className="text-xs text-[#cc4444] mb-2 px-2.5 py-1.5 border border-[#3a1a1a] rounded-md bg-[#1a0a0a]">
+          {error}
+        </p>
+      )}
 
       <div className="relative border border-[#1e1e30] rounded-[10px] overflow-hidden bg-[#0a0a14]">
         <canvas ref={canvasRef} width={W} height={H} className="block w-full h-auto" />
@@ -178,12 +228,12 @@ export default function Home() {
         )}
       </div>
 
-      <Controls 
-        playing={playing} 
-        togglePlay={() => (playing ? stopPlay() : startPlay())} 
-        progress={progress} 
-        shotInfo={shotInfo} 
-        handleExport={handleExport} 
+      <Controls
+        playing={playing}
+        togglePlay={handleTogglePlay}
+        progress={progress}
+        shotInfo={shotInfo}
+        handleExport={handleExport}
       />
     </main>
   );

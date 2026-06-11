@@ -1,7 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = `You are an expert generative creative coder.
 Your task is to write a JavaScript snippet that will be passed to \`new Function('ctx', 'W', 'H', 't', code)\`.
@@ -24,18 +21,6 @@ export async function POST(request) {
     if (!prompt || typeof prompt !== "string") {
       return Response.json({ error: "prompt is required" }, { status: 400 });
     }
-
-    // const message = await client.messages.create({
-    //   model: "claude-sonnet-4-20250514",
-    //   max_tokens: 1024,
-    //   system: SYSTEM_PROMPT,
-    //   messages: [{ role: "user", content: prompt }],
-    // });
-
-    // const raw = message.content
-    //   .filter((b) => b.type === "text")
-    //   .map((b) => b.text)
-    //   .join("");
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-lite",
       contents: [
